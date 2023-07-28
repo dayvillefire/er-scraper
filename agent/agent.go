@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
+	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/jbuchbinder/shims"
 )
@@ -22,11 +25,18 @@ var (
 	ErrNotAuthorized = errors.New("not authorized")
 )
 
+const (
+	ContextLogin    = 0
+	ContextDownload = 1
+)
+
 type Agent struct {
 	Debug    bool
 	LoginUrl string
 	Username string
 	Password string
+
+	ContextSwitch int
 
 	reqMap  map[string]network.RequestID
 	urlMap  map[string]string
@@ -34,7 +44,9 @@ type Agent struct {
 	attr    map[string]string
 	cookies []network.Cookie
 	ctx     context.Context
+	cancel  context.CancelFunc
 	cfunc   []context.CancelFunc
+	done    chan string
 
 	initialized bool
 	cancelled   bool
@@ -54,32 +66,29 @@ func (a *Agent) Init() error {
 	a.bodyMap = map[string][]byte{}
 	a.attr = map[string]string{}
 	a.cfunc = make([]context.CancelFunc, 0)
-
-	var _ctx context.Context
-	var _cancel context.CancelFunc
+	a.done = make(chan string, 1)
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserDataDir(""),
 		chromedp.Flag("enable-privacy-sandbox-ads-apis", true),
 	)
 
-	_ctx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	a.cfunc = append(a.cfunc, cancel)
-
-	if a.Debug {
-		_ctx, _cancel = chromedp.NewContext(
-			_ctx,
-			chromedp.WithDebugf(log.Printf),
-		)
-	} else {
-		_ctx, _cancel = chromedp.NewContext(
-			_ctx,
-		)
+	lf := log.Printf
+	if !a.Debug {
+		lf = nil
 	}
-	a.cfunc = append(a.cfunc, _cancel)
 
-	ctx, cancel := context.WithTimeout(_ctx, 60*time.Second)
+	ctx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	a.cfunc = append(a.cfunc, cancel)
+
+	ctx, cancel = chromedp.NewContext(ctx, chromedp.WithDebugf(lf))
+	a.cfunc = append(a.cfunc, cancel)
+
+	/*
+		// create a timeout as a safety net to prevent any infinite wait loops
+		ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
+		a.cfunc = append(a.cfunc, cancel)
+	*/
 
 	// ensure that the browser process is started
 	if err := chromedp.Run(ctx); err != nil {
@@ -89,56 +98,74 @@ func (a *Agent) Init() error {
 
 	// Listen to all network events and save content for whatever comes in
 	chromedp.ListenTarget(ctx, func(v interface{}) {
-		switch ev := v.(type) {
-		case *network.EventRequestWillBeSent:
-			//log.Printf("network.EventRequestWillBeSent")
-			if unwantedTraffic(ev.Request.URL) {
-				break
-			}
-			if a.Debug {
-				log.Printf("EventRequestWillBeSent: %v: %v", ev.RequestID, ev.Request.URL)
-			}
-			a.l.Lock()
-			a.reqMap[ev.Request.URL] = ev.RequestID
-			a.l.Unlock()
-		case *network.EventResponseReceived:
-			//log.Printf("network.EventResponseReceived")
-			if unwantedTraffic(ev.Response.URL) {
-				break
-			}
+		switch a.ContextSwitch {
+		case ContextLogin:
 
-			if a.Debug {
-				log.Printf("EventResponseReceived: %v: %v", ev.RequestID, ev.Response.URL)
-				log.Printf("EventResponseReceived: status = %d, headers = %#v", ev.Response.Status, ev.Response.Headers)
-			}
-			a.l.Lock()
-			a.urlMap[ev.RequestID.String()] = ev.Response.URL
-			a.l.Unlock()
-		case *network.EventLoadingFinished:
-			//log.Printf("network.EventLoadingFinished")
-			if a.Debug {
-				log.Printf("EventLoadingFinished: %v", ev.RequestID)
-			}
-			a.wg.Add(1)
-			go func() {
-				c := chromedp.FromContext(ctx)
-				body, err := network.GetResponseBody(ev.RequestID).Do(cdp.WithExecutor(ctx, c.Target))
-				if err != nil {
-					defer a.wg.Done()
-					return
+			switch ev := v.(type) {
+			case *network.EventRequestWillBeSent:
+				//log.Printf("network.EventRequestWillBeSent")
+				if unwantedTraffic(ev.Request.URL) {
+					break
 				}
-
+				if a.Debug {
+					log.Printf("EventRequestWillBeSent: %v: %v", ev.RequestID, ev.Request.URL)
+				}
 				a.l.Lock()
-				url := a.urlMap[ev.RequestID.String()]
-				a.bodyMap[url] = body
+				a.reqMap[ev.Request.URL] = ev.RequestID
 				a.l.Unlock()
+			case *network.EventResponseReceived:
+				//log.Printf("network.EventResponseReceived")
+				if unwantedTraffic(ev.Response.URL) {
+					break
+				}
 
 				if a.Debug {
-					log.Printf("%s: %s", url, string(body))
+					log.Printf("EventResponseReceived: %v: %v", ev.RequestID, ev.Response.URL)
+					log.Printf("EventResponseReceived: status = %d, headers = %#v", ev.Response.Status, ev.Response.Headers)
 				}
+				a.l.Lock()
+				a.urlMap[ev.RequestID.String()] = ev.Response.URL
+				a.l.Unlock()
+			case *network.EventLoadingFinished:
+				//log.Printf("network.EventLoadingFinished")
+				if a.Debug {
+					log.Printf("EventLoadingFinished: %v", ev.RequestID)
+				}
+				a.wg.Add(1)
+				go func() {
+					c := chromedp.FromContext(ctx)
+					body, err := network.GetResponseBody(ev.RequestID).Do(cdp.WithExecutor(ctx, c.Target))
+					if err != nil {
+						defer a.wg.Done()
+						return
+					}
 
-				defer a.wg.Done()
-			}()
+					a.l.Lock()
+					url := a.urlMap[ev.RequestID.String()]
+					a.bodyMap[url] = body
+					a.l.Unlock()
+
+					if a.Debug {
+						log.Printf("%s: %s", url, string(body))
+					}
+
+					defer a.wg.Done()
+				}()
+			}
+			break
+		case ContextDownload:
+			if ev, ok := v.(*browser.EventDownloadProgress); ok {
+				completed := "(unknown)"
+				if ev.TotalBytes != 0 {
+					completed = fmt.Sprintf("%0.2f%%", ev.ReceivedBytes/ev.TotalBytes*100.0)
+				}
+				log.Printf("state: %s, completed: %s\n", ev.State.String(), completed)
+				if ev.State == browser.DownloadProgressStateCompleted {
+					a.done <- ev.GUID
+					close(a.done)
+				}
+			}
+			break
 		}
 	})
 
@@ -346,33 +373,63 @@ func (a *Agent) authorizedGet(url string) ([]byte, error) {
 	return []byte(out), nil
 }
 
-// authorizedDownload uses the current authentication mechanism to download a file
-func (a *Agent) authorizedDownload(url string) ([]byte, error) {
-	var out []byte
+func (a *Agent) authorizedPost(url string, data map[string]any) ([]byte, error) {
+	log.Printf("authorizedPost(%s)", url)
+
+	js := `
+async function postData(url = '', data = {}) {
+  const response = await fetch(url, {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+  return response.text();
+}; postData('` + url + `', ` + string(shims.SingleValueDiscardError(json.Marshal(data))) + `)
+    `
+
+	var response string
+	if err := chromedp.Run(a.ctx,
+		chromedp.Evaluate(js, &response, func(ep *runtime.EvaluateParams) *runtime.EvaluateParams {
+			return ep.WithAwaitPromise(true)
+		}),
+	); err != nil {
+		return []byte{}, err
+	}
+
+	return []byte(response), nil
+}
+
+// authorizedDownload uses the current authentication mechanism to download a file.
+// Returns the temporary file name.
+func (a *Agent) authorizedDownload(url string) (string, error) {
+	var out string
 
 	log.Printf("authorizedDownload(%s)", url)
 
-	var requestID network.RequestID
-	done := make(chan string, 1)
+	a.done = make(chan string, 1)
+	a.ContextSwitch = ContextDownload
 
-	_ctx, _cancel := context.WithCancel(a.ctx)
+	//var requestID network.RequestID
+
+	//_ctx, _cancel := context.WithCancel(a.ctx)
 
 	// set up a listener to watch the network events and close the channel when
 	// complete the request id matching is important both to filter out
 	// unwanted network events and to reference the downloaded file later
-	chromedp.ListenTarget(_ctx, func(v interface{}) {
-		if ev, ok := v.(*browser.EventDownloadProgress); ok {
-			completed := "(unknown)"
-			if ev.TotalBytes != 0 {
-				completed = fmt.Sprintf("%0.2f%%", ev.ReceivedBytes/ev.TotalBytes*100.0)
+	/*
+		chromedp.ListenTarget(_ctx, func(v interface{}) {
+			if ev, ok := v.(*browser.EventDownloadProgress); ok {
+				completed := "(unknown)"
+				if ev.TotalBytes != 0 {
+					completed = fmt.Sprintf("%0.2f%%", ev.ReceivedBytes/ev.TotalBytes*100.0)
+				}
+				log.Printf("state: %s, completed: %s\n", ev.State.String(), completed)
+				if ev.State == browser.DownloadProgressStateCompleted {
+					a.done <- ev.GUID
+					close(a.done)
+				}
 			}
-			log.Printf("state: %s, completed: %s\n", ev.State.String(), completed)
-			if ev.State == browser.DownloadProgressStateCompleted {
-				done <- ev.GUID
-				close(done)
-			}
-		}
-	})
+		})
+	*/
 
 	wd := shims.SingleValueDiscardError(os.Getwd())
 
@@ -382,34 +439,17 @@ func (a *Agent) authorizedDownload(url string) ([]byte, error) {
 			WithDownloadPath(wd).
 			WithEventsEnabled(true),
 		chromedp.Navigate(url),
-	); err != nil {
-		if _cancel != nil {
-			_cancel()
-		}
+	); err != nil && !strings.Contains(err.Error(), "net::ERR_ABORTED") {
 		log.Printf("authorizedDownload: ERR: %s", err.Error())
-		return []byte{}, err
+		return "", err
 	}
 
-	guid := <-done
+	guid := <-a.done
 
 	// We can predict the exact file location and name here because of how we
 	// configured SetDownloadBehavior and WithDownloadPath
-	log.Printf("wrote %s", filepath.Join(wd, guid+".zip"))
-
-	if _cancel != nil {
-		_cancel()
-	}
-
-	var err error
-	if err = chromedp.Run(a.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-		out, err = network.GetResponseBody(requestID).Do(ctx)
-		return err
-	})); err != nil {
-		return []byte{}, err
-	}
-	if len(out) < 1 {
-		return []byte{}, fmt.Errorf("no data")
-	}
+	out = filepath.Join(wd, guid)
+	log.Printf("wrote %s", out)
 
 	return out, nil
 }

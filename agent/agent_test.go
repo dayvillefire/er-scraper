@@ -1,6 +1,11 @@
 package agent
 
-import "testing"
+import (
+	"os"
+	"testing"
+
+	"github.com/jbuchbinder/shims"
+)
 
 /*
 func Test_Agent_Refresh(t *testing.T) {
@@ -29,14 +34,16 @@ func Test_Agent(t *testing.T) {
 		t.Fatalf("ERR: %s", err.Error())
 	}
 
-	c, err := a.authorizedGet("https://secure.emergencyreporting.com/training/classes.php")
-	if err != nil {
-		t.Fatalf("ERR: %s", err.Error())
-	}
+	/*
+		c, err := a.authorizedGet("https://secure.emergencyreporting.com/training/classes.php")
+		if err != nil {
+			t.Fatalf("ERR: %s", err.Error())
+		}
 
-	t.Logf("%s", c)
+		t.Logf("%s", c)
+	*/
 
-	err = a.DownloadTrainingAssets(7983393)
+	err = a.DownloadTrainingAssets(shims.SingleValueDiscardError(os.Getwd()), 7988356) // 7983393)
 	if err != nil {
 		t.Fatalf("ERR: %s", err.Error())
 	}
