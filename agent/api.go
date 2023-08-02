@@ -17,28 +17,21 @@ func (a *Agent) IsAuthorized() error {
 	return nil
 }
 
+// GetAllTrainingClassIDs returns a list of all training class records in the system
 func (a *Agent) GetAllTrainingClassIDs() ([]int, error) {
 	out := make([]int, 0)
-
-	/*
-		listurl := "https://secure.emergencyreporting.com/training/ws/classes.php?_function=list_json&_search=true&rows=100&page=1&sidx=date&sord=desc&date=_0&category=_0&location=_0&leadinstructor=_0&length=_0&status=active&station=_0"
-		_, err := a.authorizedGet(listurl)
-		if err != nil {
-			return out, err
-		}
-	*/
 
 	a.ContextSwitch = ContextDownload
 
 	csvurl := "https://secure.emergencyreporting.com/training/ws/classes.php?_function=list_csv&_csvtype=info"
 
-	log.Printf("Load class list WS")
+	log.Printf("INFO: Load class list WS")
 	classesOut, err := a.authorizedDownload(csvurl)
 	if err != nil {
 		return out, err
 	}
 
-	log.Printf("CSV: %s", classesOut)
+	log.Printf("INFO: CSV temporary file: %s", classesOut)
 	defer os.Remove(classesOut)
 
 	classesFp, err := os.Open(classesOut)
@@ -59,22 +52,22 @@ func (a *Agent) GetAllTrainingClassIDs() ([]int, error) {
 		out = append(out, shims.SingleValueDiscardError(strconv.Atoi(record[0])))
 	}
 
-	return out, nil // TODO: FIXME: XXX: IMPLEMENT
+	return out, nil
 }
 
-func (a *Agent) DownloadTrainingAssets(destPath string, classId int) error {
+// DownloadTrainingAssets downloads training files, with appropriate names,
+// to the specified destination path for the given class ID
+func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 	//url := fmt.Sprintf("https://secure.emergencyreporting.com/training/class.php?id=%d&recurrence_mode=Single", classId)
 	//url := fmt.Sprintf("https://secure.emergencyreporting.com/training/class_files.php?id=%d&recurrence_mode=Single", classId)
 	url := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_files.php?classid=%d&_function=list_json", classId)
-	//var outernodes []*cdp.Node
 	var err error
-	//var nodes []*cdp.Node
 
 	a.ContextSwitch = ContextDownload
 
-	log.Printf("Find files for class %d (url = %s)", classId, url)
+	log.Printf("INFO: Find files for class %d (url = %s)", classId, url)
 
-	log.Printf("Load class file list WS")
+	log.Printf("INFO: Load class file list WS")
 	classfile, err := a.authorizedGet(url)
 	if err != nil {
 		return err
@@ -100,7 +93,7 @@ func (a *Agent) DownloadTrainingAssets(destPath string, classId int) error {
 		//m1 := regexp.MustCompile(`<span class=".*\/span&gt;`)
 		//cfs = m1.ReplaceAllString(cfs, "")
 
-		log.Printf("FILE = %s", cfs)
+		log.Printf("INFO: FILE = %s", cfs)
 
 		classfile = []byte(cfs)
 
@@ -133,13 +126,7 @@ func (a *Agent) DownloadTrainingAssets(destPath string, classId int) error {
 				"https://secure.emergencyreporting.com/training/ws/class_files.php?classid=%d&id=%s&_function=detail",
 				classId, id,
 			))
-		/*
-			classFileInfo, err := a.authorizedPost("https://secure.emergencyreporting.com/training/ws/class_files.php", map[string]any{
-				"classid":   classId,
-				"id":        id,
-				"_function": "detail",
-			})
-		*/
+
 		if err != nil {
 			log.Printf("ERR: %s", err.Error())
 			continue
@@ -157,7 +144,9 @@ func (a *Agent) DownloadTrainingAssets(destPath string, classId int) error {
 			Url         string `json:"url"`
 		}
 
-		log.Printf("CFI = %s", cfi)
+		if a.Debug {
+			log.Printf("DEBUG: CFI = %s", cfi)
+		}
 
 		var cfiOut classFileInfoType
 		err = json.Unmarshal([]byte(cfi), &cfiOut)
@@ -166,12 +155,14 @@ func (a *Agent) DownloadTrainingAssets(destPath string, classId int) error {
 			continue
 		}
 
-		log.Printf("CFI = %v, fn = %s", cfiOut, fn)
+		if a.Debug {
+			log.Printf("DEBUG: CFI = %v, fn = %s", cfiOut, fn)
+		}
 
 		fileGuidMap[fn] = cfiOut.Fileguid
 	}
 
-	log.Printf("fileguidmap = %#v", fileGuidMap)
+	log.Printf("INFO: fileguidmap = %#v", fileGuidMap)
 
 	for fn, guid := range fileGuidMap {
 		var out string
@@ -183,7 +174,11 @@ func (a *Agent) DownloadTrainingAssets(destPath string, classId int) error {
 			log.Printf("ERR: %s", err.Error())
 			continue
 		}
-		log.Printf("title = %s, temp file = %s", fn, out)
+		log.Printf("INFO: title = %s, temp file = %s", fn, out)
+		err = os.Rename(out, destPath+string(os.PathSeparator)+fn)
+		if err != nil {
+			log.Printf("ERR: renaming file %s to %s: %s", out, destPath+string(os.PathSeparator)+fn, err.Error())
+		}
 	}
 
 	return err

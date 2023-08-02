@@ -1,15 +1,14 @@
 package agent
 
-import "testing"
+import (
+	"os"
+	"testing"
+
+	"github.com/jbuchbinder/shims"
+)
 
 func Test_GetAllTrainingClassIDs(t *testing.T) {
-	a := Agent{
-		//Debug:    true,
-		Username: DEFAULT_USERNAME,
-		Password: DEFAULT_PASSWORD,
-		LoginUrl: DEFAULT_URL,
-	}
-	err := a.Init()
+	a, err := testGetAgent(t)
 	if err != nil {
 		t.Fatalf("ERR: %s", err.Error())
 	}
@@ -19,4 +18,16 @@ func Test_GetAllTrainingClassIDs(t *testing.T) {
 		t.Fatalf("ERR: %s", err.Error())
 	}
 	t.Logf("ids = %#v", ids)
+}
+
+func Test_DownloadTrainingAssets(t *testing.T) {
+	a, err := testGetAgent(t)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	err = a.DownloadTrainingAssets(7988356, shims.SingleValueDiscardError(os.Getwd())) // 7983393)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
 }

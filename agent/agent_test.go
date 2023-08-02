@@ -1,51 +1,23 @@
 package agent
 
 import (
-	"os"
 	"testing"
-
-	"github.com/jbuchbinder/shims"
 )
 
-/*
-func Test_Agent_Refresh(t *testing.T) {
-	a := Agent{
-		Username: DEFAULT_USERNAME,
-		Password: DEFAULT_PASSWORD,
-		LoginUrl: DEFAULT_URL,
-	}
-	err := a.Init()
-	if err != nil {
-		t.Fatalf("ERR: %s", err.Error())
-	}
-
-}
-*/
-
-func Test_Agent(t *testing.T) {
-	a := Agent{
+func testGetAgent(t *testing.T) (*Agent, error) {
+	a := &Agent{
 		//Debug:    true,
 		Username: DEFAULT_USERNAME,
 		Password: DEFAULT_PASSWORD,
 		LoginUrl: DEFAULT_URL,
 	}
 	err := a.Init()
+	return a, err
+}
+
+func Test_Agent(t *testing.T) {
+	_, err := testGetAgent(t)
 	if err != nil {
 		t.Fatalf("ERR: %s", err.Error())
 	}
-
-	/*
-		c, err := a.authorizedGet("https://secure.emergencyreporting.com/training/classes.php")
-		if err != nil {
-			t.Fatalf("ERR: %s", err.Error())
-		}
-
-		t.Logf("%s", c)
-	*/
-
-	err = a.DownloadTrainingAssets(shims.SingleValueDiscardError(os.Getwd()), 7988356) // 7983393)
-	if err != nil {
-		t.Fatalf("ERR: %s", err.Error())
-	}
-
 }

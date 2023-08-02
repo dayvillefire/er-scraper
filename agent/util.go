@@ -9,12 +9,22 @@ import (
 const (
 	dateSearchFormat = "1/2/2006,03:04:05 PM"
 	dateFormat       = "1/2/2006 15:04:05"
+	dateShortFormat  = "1/2/2006 15:04"
 )
 
 func parseDate(dt string) time.Time {
 	t, err := time.Parse(dateFormat, dt)
 	if err != nil {
 		log.Printf("parseDate: %s could not be parsed, using now()", dt)
+		return time.Now()
+	}
+	return t
+}
+
+func parseShortDate(dt string) time.Time {
+	t, err := time.Parse(dateShortFormat, dt)
+	if err != nil {
+		log.Printf("parseShortDate: %s could not be parsed, using now()", dt)
 		return time.Now()
 	}
 	return t
