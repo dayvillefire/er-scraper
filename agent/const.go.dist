@@ -1,0 +1,7 @@
+package agent
+
+const (
+	DEFAULT_URL = "https://secure.emergencyreporting.com/"
+	DEFAULT_USERNAME = ""
+	DEFAULT_PASSWORD = ""
+)
