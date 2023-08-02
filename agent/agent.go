@@ -408,29 +408,6 @@ func (a *Agent) authorizedDownload(url string) (string, error) {
 	a.done = make(chan string, 1)
 	a.ContextSwitch = ContextDownload
 
-	//var requestID network.RequestID
-
-	//_ctx, _cancel := context.WithCancel(a.ctx)
-
-	// set up a listener to watch the network events and close the channel when
-	// complete the request id matching is important both to filter out
-	// unwanted network events and to reference the downloaded file later
-	/*
-		chromedp.ListenTarget(_ctx, func(v interface{}) {
-			if ev, ok := v.(*browser.EventDownloadProgress); ok {
-				completed := "(unknown)"
-				if ev.TotalBytes != 0 {
-					completed = fmt.Sprintf("%0.2f%%", ev.ReceivedBytes/ev.TotalBytes*100.0)
-				}
-				log.Printf("state: %s, completed: %s\n", ev.State.String(), completed)
-				if ev.State == browser.DownloadProgressStateCompleted {
-					a.done <- ev.GUID
-					close(a.done)
-				}
-			}
-		})
-	*/
-
 	wd := shims.SingleValueDiscardError(os.Getwd())
 
 	if err := chromedp.Run(a.ctx,
