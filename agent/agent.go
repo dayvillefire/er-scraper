@@ -373,6 +373,26 @@ func (a *Agent) authorizedGet(url string) ([]byte, error) {
 	return []byte(out), nil
 }
 
+func (a *Agent) authorizedJsonGet(url string) ([]byte, error) {
+	b, err := a.authorizedGet(url)
+	if err != nil {
+		return b, err
+	}
+	s := string(b)
+	s = strings.TrimPrefix(s, "<head></head><body>")
+	s = strings.TrimSuffix(s, "</body>")
+	for {
+		s = strings.TrimSuffix(s, "</span>")
+		s = strings.TrimSuffix(s, "</div>")
+		if !strings.HasSuffix(s, "</span>") && !strings.HasSuffix(s, "</div>") {
+			break
+		}
+	}
+
+	b = []byte(s)
+	return b, err
+}
+
 func (a *Agent) authorizedPost(url string, data map[string]any) ([]byte, error) {
 	log.Printf("authorizedPost(%s)", url)
 

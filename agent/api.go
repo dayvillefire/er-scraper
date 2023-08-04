@@ -18,8 +18,9 @@ func (a *Agent) IsAuthorized() error {
 }
 
 // GetAllTrainingClassIDs returns a list of all training class records in the system
-func (a *Agent) GetAllTrainingClassIDs() ([]int, error) {
+func (a *Agent) GetAllTrainingClassIDs() ([]int, [][]string, error) {
 	out := make([]int, 0)
+	fullout := [][]string{}
 
 	a.ContextSwitch = ContextDownload
 
@@ -28,7 +29,7 @@ func (a *Agent) GetAllTrainingClassIDs() ([]int, error) {
 	log.Printf("INFO: Load class list WS")
 	classesOut, err := a.authorizedDownload(csvurl)
 	if err != nil {
-		return out, err
+		return out, fullout, err
 	}
 
 	log.Printf("INFO: CSV temporary file: %s", classesOut)
@@ -36,7 +37,7 @@ func (a *Agent) GetAllTrainingClassIDs() ([]int, error) {
 
 	classesFp, err := os.Open(classesOut)
 	if err != nil {
-		return out, err
+		return out, fullout, err
 	}
 
 	reader := csv.NewReader(classesFp)
@@ -46,13 +47,39 @@ func (a *Agent) GetAllTrainingClassIDs() ([]int, error) {
 			break
 		}
 		if err != nil {
-			return out, err
+			return out, fullout, err
 		}
-
+		fullout = append(fullout, record)
 		out = append(out, shims.SingleValueDiscardError(strconv.Atoi(record[0])))
 	}
 
-	return out, nil
+	return out, fullout, nil
+}
+
+func (a *Agent) DownloadTrainingAttendance(classId int, destFile string) error {
+	url := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_people.php?classid=%d&_function=list_json", classId)
+	a.ContextSwitch = ContextDownload
+
+	log.Printf("INFO: Load class attendance list WS")
+	attendance, err := a.authorizedJsonGet(url)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(destFile, attendance, 0644)
+}
+
+func (a *Agent) DownloadTrainingNarrative(classId int, destFile string) error {
+	url := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_narrative.php?classid=%d&_function=read", classId)
+	a.ContextSwitch = ContextDownload
+
+	log.Printf("INFO: Load class narrative WS")
+	narrative, err := a.authorizedJsonGet(url)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(destFile, narrative, 0644)
 }
 
 // DownloadTrainingAssets downloads training files, with appropriate names,
