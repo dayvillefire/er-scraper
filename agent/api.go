@@ -212,3 +212,27 @@ func (a *Agent) GetUsers() (map[string]any, error) {
 	}
 	return out, err
 }
+
+func (a *Agent) GetUserCertifications(userId int) (map[string]any, error) {
+	out := make(map[string]any, 0)
+	url := fmt.Sprintf("https://api.emergencyreporting.com/V1/users/%d/certifications?limit=1000", userId)
+
+	a.ContextSwitch = ContextDownload
+
+	log.Printf("INFO: Load user certifications WS")
+	data, err := a.authorizedApiGetCall(
+		fmt.Sprintf("https://secure.emergencyreporting.com/admin_user/users/Certifications.php?userid=%d", userId),
+		url,
+	)
+
+	if err != nil {
+		log.Printf("ERR: %s: %s", err.Error(), string(data))
+		return out, err
+	}
+
+	err = json.Unmarshal(data, &out)
+	if err != nil {
+		log.Printf("ERR: %s: %s", err.Error(), string(data))
+	}
+	return out, err
+}

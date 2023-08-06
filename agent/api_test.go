@@ -74,3 +74,23 @@ func Test_GetUsers(t *testing.T) {
 
 	t.Logf("INFO: Found %s user records", records)
 }
+
+// GetUserCertifications
+func Test_GetUserCertifications(t *testing.T) {
+	a, err := testGetAgent(t)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	data, err := a.GetUserCertifications(411472)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	records, found := data["totalRows"]
+	if !found {
+		t.Fatalf("ERR: Returned %#v", data)
+	}
+
+	t.Logf("INFO: Found %s user records", records)
+}

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -410,6 +412,38 @@ func (a *Agent) authorizedJsonGet2(url string) ([]byte, error) {
 		return nil, fmt.Errorf("could not get url %s: %s", url, err.Error())
 	}
 	return []byte(out), nil
+}
+
+// authorizedApiGetCall accesses the api.emergencyreporting.com API, which
+// requires tokens gleaned from the page. Rather than using the chromedp
+// agent, we can use a standard native net/http request with the extracted
+// access token. It won't work for a regular internal webservices call, as
+// far as I can figure.
+func (a *Agent) authorizedApiGetCall(hostPage, apiUrl string) ([]byte, error) {
+	log.Printf("authorizedApiGetCall(%s, %s)", hostPage, apiUrl)
+
+	var accessToken string
+	if err := chromedp.Run(a.ctx,
+		chromedp.Navigate(hostPage),
+		chromedp.Evaluate(`$('#accessToken').val();`, &accessToken),
+	); err != nil {
+		return []byte{}, err
+	}
+
+	// Basic fetch
+	req, err := http.NewRequest("GET", apiUrl, nil)
+	if err != nil {
+		return []byte{}, err
+	}
+	req.Header.Set("Authorization", accessToken)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
 }
 
 func (a *Agent) authorizedPost(url string, data map[string]any) ([]byte, error) {
