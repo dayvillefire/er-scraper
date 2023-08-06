@@ -55,3 +55,22 @@ func Test_DownloadTrainingAttendance(t *testing.T) {
 		t.Fatalf("ERR: %s", err.Error())
 	}
 }
+
+func Test_GetUsers(t *testing.T) {
+	a, err := testGetAgent(t)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	users, err := a.GetUsers()
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	records, found := users["records"]
+	if !found {
+		t.Fatalf("ERR: Returned %#v", users)
+	}
+
+	t.Logf("INFO: Found %s user records", records)
+}

@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/jbuchbinder/shims"
 )
@@ -61,7 +60,7 @@ func (a *Agent) DownloadTrainingAttendance(classId int, destFile string) error {
 	a.ContextSwitch = ContextDownload
 
 	log.Printf("INFO: Load class attendance list WS")
-	attendance, err := a.authorizedJsonGet(url)
+	attendance, err := a.authorizedJsonGet2(url)
 	if err != nil {
 		return err
 	}
@@ -74,7 +73,7 @@ func (a *Agent) DownloadTrainingNarrative(classId int, destFile string) error {
 	a.ContextSwitch = ContextDownload
 
 	log.Printf("INFO: Load class narrative WS")
-	narrative, err := a.authorizedJsonGet(url)
+	narrative, err := a.authorizedJsonGet2(url)
 	if err != nil {
 		return err
 	}
@@ -95,7 +94,7 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 	log.Printf("INFO: Find files for class %d (url = %s)", classId, url)
 
 	log.Printf("INFO: Load class file list WS")
-	classfile, err := a.authorizedGet(url)
+	classfile, err := a.authorizedJsonGet2(url)
 	if err != nil {
 		return err
 	}
@@ -104,26 +103,6 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 	fileGuidMap := map[string]string{}
 
 	{
-		// Fugly part 1 -- this is getting wrapped as HTML, even though it clearly isn't.
-		cfs := string(classfile)
-		cfs = strings.TrimPrefix(cfs, "<head></head><body>")
-		cfs = strings.TrimSuffix(cfs, "</body>")
-		cfs = strings.TrimSuffix(cfs, "</span>")
-		cfs = strings.TrimSuffix(cfs, "</span>")
-		cfs = strings.TrimSuffix(cfs, "</span>")
-		cfs = strings.ReplaceAll(cfs, `""\&quot;`, "")
-		cfs = strings.ReplaceAll(cfs, `<img src="\&quot;\/graphics\/trash2.gif\&quot;" alt="\&quot;Delete" uploaded="" file\"="" title="\&quot;Delete" class="\&quot;jqg_delete\&quot;">&lt;\/span&gt;`, "")
-		cfs = strings.ReplaceAll(cfs, `"\&quot;`, "")
-		cfs = strings.ReplaceAll(cfs, `\&quot;"`, "")
-
-		// Fugly part 2 -- replace to pull out bad serialization
-		//m1 := regexp.MustCompile(`<span class=".*\/span&gt;`)
-		//cfs = m1.ReplaceAllString(cfs, "")
-
-		log.Printf("INFO: FILE = %s", cfs)
-
-		classfile = []byte(cfs)
-
 		type classResponse struct {
 			Rows []struct {
 				Id   string   `json:"id"`
@@ -148,7 +127,7 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 	}
 
 	for fn, id := range fileMap {
-		classFileInfo, err := a.authorizedGet(
+		classFileInfo, err := a.authorizedJsonGet2(
 			fmt.Sprintf(
 				"https://secure.emergencyreporting.com/training/ws/class_files.php?classid=%d&id=%s&_function=detail",
 				classId, id,
@@ -158,10 +137,13 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 			log.Printf("ERR: %s", err.Error())
 			continue
 		}
-		cfi := string(classFileInfo)
-		cfi = strings.TrimPrefix(cfi, "<head></head><body>")
-		cfi = strings.TrimSuffix(cfi, "</body>")
-		cfi = strings.TrimSuffix(cfi, "</span>")
+
+		/*
+			cfi := string(classFileInfo)
+			cfi = strings.TrimPrefix(cfi, "<head></head><body>")
+			cfi = strings.TrimSuffix(cfi, "</body>")
+			cfi = strings.TrimSuffix(cfi, "</span>")
+		*/
 
 		type classFileInfoType struct {
 			Accesslevel string `json:"accesslevel"`
@@ -172,11 +154,11 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 		}
 
 		if a.Debug {
-			log.Printf("DEBUG: CFI = %s", cfi)
+			log.Printf("DEBUG: CFI = %s", string(classFileInfo))
 		}
 
 		var cfiOut classFileInfoType
-		err = json.Unmarshal([]byte(cfi), &cfiOut)
+		err = json.Unmarshal(classFileInfo, &cfiOut)
 		if err != nil {
 			log.Printf("ERR: %s", err.Error())
 			continue
@@ -209,4 +191,24 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 	}
 
 	return err
+}
+
+func (a *Agent) GetUsers() (map[string]any, error) {
+	out := make(map[string]any, 0)
+	url := "https://secure.emergencyreporting.com/webservices/admin/users.php?_function=list_json&_search=false&rows=500&page=1&sidx=name&sord=asc"
+
+	a.ContextSwitch = ContextDownload
+
+	log.Printf("INFO: Load user list WS")
+	users, err := a.authorizedJsonGet2(url)
+	if err != nil {
+		log.Printf("ERR: %s: %s", err.Error(), string(users))
+		return out, err
+	}
+
+	err = json.Unmarshal(users, &out)
+	if err != nil {
+		log.Printf("ERR: %s: %s", err.Error(), string(users))
+	}
+	return out, err
 }

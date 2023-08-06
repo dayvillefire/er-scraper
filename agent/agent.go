@@ -384,13 +384,32 @@ func (a *Agent) authorizedJsonGet(url string) ([]byte, error) {
 	for {
 		s = strings.TrimSuffix(s, "</span>")
 		s = strings.TrimSuffix(s, "</div>")
-		if !strings.HasSuffix(s, "</span>") && !strings.HasSuffix(s, "</div>") {
+		s = strings.TrimSuffix(s, "</a>")
+		if !strings.HasSuffix(s, "</span>") && !strings.HasSuffix(s, "</div>") && !strings.HasSuffix(s, "</a>") {
 			break
 		}
 	}
+	s = strings.TrimSuffix(s, "</a>")
+
+	s = strings.ReplaceAll(s, `\"=""`, `\"=\"\"`)
+	s = strings.ReplaceAll(s, `\"=""`, `\"=\"\"`)
 
 	b = []byte(s)
 	return b, err
+}
+
+func (a *Agent) authorizedJsonGet2(url string) ([]byte, error) {
+	var out string
+
+	log.Printf("authorizedJsonGet2(%s)", url)
+
+	if err := chromedp.Run(a.ctx, chromedp.Navigate(url),
+		chromedp.Tasks{
+			chromedp.Text(`//*`, &out),
+		}); err != nil {
+		return nil, fmt.Errorf("could not get url %s: %s", url, err.Error())
+	}
+	return []byte(out), nil
 }
 
 func (a *Agent) authorizedPost(url string, data map[string]any) ([]byte, error) {
