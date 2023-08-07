@@ -62,6 +62,8 @@ func (a *Agent) Init() error {
 		return fmt.Errorf("already initialized")
 	}
 
+	a.LoginUrl = "https://secure.emergencyreporting.com/"
+
 	// Initialize all maps to avoid NPE
 	a.reqMap = map[string]network.RequestID{}
 	a.urlMap = map[string]string{}

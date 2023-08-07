@@ -10,6 +10,7 @@ replace (
 require (
 	github.com/dayvillefire/er-scraper/agent v0.0.0-20230806185056-27a508c58299
 	github.com/jbuchbinder/shims v0.0.0-20230728185230-53ce6a775b20
+	github.com/joho/godotenv v1.5.1
 )
 
 require (

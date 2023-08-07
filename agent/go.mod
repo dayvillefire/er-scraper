@@ -6,6 +6,7 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20230802225258-3cf4e6d46a89
 	github.com/chromedp/chromedp v0.9.2
 	github.com/jbuchbinder/shims v0.0.0-20230728185230-53ce6a775b20
+	github.com/joho/godotenv v1.5.1
 )
 
 require (

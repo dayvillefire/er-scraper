@@ -3,30 +3,32 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 
 	"github.com/dayvillefire/er-scraper/agent"
+	"github.com/joho/godotenv"
 )
 
 var (
-	debug = flag.Bool("debug", false, "Debug")
-	user  = flag.String("user", "", "ER username")
-	pass  = flag.String("pass", "", "ER password")
+	debug      = flag.Bool("debug", false, "Debug")
+	user, pass string
 )
 
 func main() {
 	flag.Parse()
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 
 	if len(flag.Args()) < 1 {
 		log.Printf("syntax: er-scraper [--flags] ACTION")
 		return
 	}
 
-	if *user == "" {
-		*user = agent.DEFAULT_USERNAME
-	}
-	if *pass == "" {
-		*pass = agent.DEFAULT_PASSWORD
-	}
+	user = os.Getenv("USERNAME")
+	pass = os.Getenv("PASSWORD")
 
 	switch flag.Arg(0) {
 	case "training":
@@ -40,8 +42,7 @@ func main() {
 func getAgent() *agent.Agent {
 	return &agent.Agent{
 		Debug:    *debug,
-		LoginUrl: agent.DEFAULT_URL,
-		Username: *user,
-		Password: *pass,
+		Username: user,
+		Password: pass,
 	}
 }
