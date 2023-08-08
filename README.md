@@ -6,7 +6,8 @@ DISCLAIMER: This tool is meant to allow data migration from an obsolete service 
 
 ## Export Supports
 
-- [ ] Hydrants
+- [X] Events / Calendar
+- [X] Hydrants
 - [X] Incidents (through NFIRS export, not necessary)
   - [ ] Incident Attachments
   - [ ] Incident Vehicles

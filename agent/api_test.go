@@ -94,3 +94,31 @@ func Test_GetUserCertifications(t *testing.T) {
 
 	t.Logf("INFO: Found %s user records", records)
 }
+
+func Test_GetHydrants(t *testing.T) {
+	a, err := testGetAgent(t)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	data, err := a.GetHydrants()
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	t.Logf("INFO: Found %d hydrant records", len(data))
+}
+
+func Test_ExportCalendar(t *testing.T) {
+	a, err := testGetAgent(t)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	data, err := a.ExportCalendar()
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	t.Logf("INFO: %s", string(data))
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -56,11 +57,11 @@ func (a *Agent) GetAllTrainingClassIDs() ([]int, [][]string, error) {
 }
 
 func (a *Agent) DownloadTrainingAttendance(classId int, destFile string) error {
-	url := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_people.php?classid=%d&_function=list_json", classId)
+	u := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_people.php?classid=%d&_function=list_json", classId)
 	a.ContextSwitch = ContextDownload
 
 	log.Printf("INFO: Load class attendance list WS")
-	attendance, err := a.authorizedJsonGet2(url)
+	attendance, err := a.authorizedJsonGet2(u)
 	if err != nil {
 		return err
 	}
@@ -69,11 +70,11 @@ func (a *Agent) DownloadTrainingAttendance(classId int, destFile string) error {
 }
 
 func (a *Agent) DownloadTrainingNarrative(classId int, destFile string) error {
-	url := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_narrative.php?classid=%d&_function=read", classId)
+	u := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_narrative.php?classid=%d&_function=read", classId)
 	a.ContextSwitch = ContextDownload
 
 	log.Printf("INFO: Load class narrative WS")
-	narrative, err := a.authorizedJsonGet2(url)
+	narrative, err := a.authorizedJsonGet2(u)
 	if err != nil {
 		return err
 	}
@@ -84,17 +85,17 @@ func (a *Agent) DownloadTrainingNarrative(classId int, destFile string) error {
 // DownloadTrainingAssets downloads training files, with appropriate names,
 // to the specified destination path for the given class ID
 func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
-	//url := fmt.Sprintf("https://secure.emergencyreporting.com/training/class.php?id=%d&recurrence_mode=Single", classId)
-	//url := fmt.Sprintf("https://secure.emergencyreporting.com/training/class_files.php?id=%d&recurrence_mode=Single", classId)
-	url := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_files.php?classid=%d&_function=list_json", classId)
+	//u := fmt.Sprintf("https://secure.emergencyreporting.com/training/class.php?id=%d&recurrence_mode=Single", classId)
+	//u := fmt.Sprintf("https://secure.emergencyreporting.com/training/class_files.php?id=%d&recurrence_mode=Single", classId)
+	u := fmt.Sprintf("https://secure.emergencyreporting.com/training/ws/class_files.php?classid=%d&_function=list_json", classId)
 	var err error
 
 	a.ContextSwitch = ContextDownload
 
-	log.Printf("INFO: Find files for class %d (url = %s)", classId, url)
+	log.Printf("INFO: Find files for class %d (url = %s)", classId, u)
 
 	log.Printf("INFO: Load class file list WS")
-	classfile, err := a.authorizedJsonGet2(url)
+	classfile, err := a.authorizedJsonGet2(u)
 	if err != nil {
 		return err
 	}
@@ -195,12 +196,12 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 
 func (a *Agent) GetUsers() (map[string]any, error) {
 	out := make(map[string]any, 0)
-	url := "https://secure.emergencyreporting.com/webservices/admin/users.php?_function=list_json&_search=false&rows=500&page=1&sidx=name&sord=asc"
+	u := "https://secure.emergencyreporting.com/webservices/admin/users.php?_function=list_json&_search=false&rows=500&page=1&sidx=name&sord=asc"
 
 	a.ContextSwitch = ContextDownload
 
 	log.Printf("INFO: Load user list WS")
-	users, err := a.authorizedJsonGet2(url)
+	users, err := a.authorizedJsonGet2(u)
 	if err != nil {
 		log.Printf("ERR: %s: %s", err.Error(), string(users))
 		return out, err
@@ -215,14 +216,14 @@ func (a *Agent) GetUsers() (map[string]any, error) {
 
 func (a *Agent) GetUserCertifications(userId int) (map[string]any, error) {
 	out := make(map[string]any, 0)
-	url := fmt.Sprintf("https://api.emergencyreporting.com/V1/users/%d/certifications?limit=1000", userId)
+	u := fmt.Sprintf("https://api.emergencyreporting.com/V1/users/%d/certifications?limit=1000", userId)
 
 	a.ContextSwitch = ContextDownload
 
 	log.Printf("INFO: Load user certifications WS")
 	data, err := a.authorizedApiGetCall(
 		fmt.Sprintf("https://secure.emergencyreporting.com/admin_user/users/Certifications.php?userid=%d", userId),
-		url,
+		u,
 	)
 
 	if err != nil {
@@ -235,4 +236,56 @@ func (a *Agent) GetUserCertifications(userId int) (map[string]any, error) {
 		log.Printf("ERR: %s: %s", err.Error(), string(data))
 	}
 	return out, err
+}
+
+// GetHydrants returns an array of all hydrant data
+func (a *Agent) GetHydrants() ([][]string, error) {
+	out := [][]string{}
+
+	a.ContextSwitch = ContextDownload
+
+	csvurl := "https://secure.emergencyreporting.com/webservices/hydrants/hydrants.php?_type=hydrants&_function=list_csv"
+
+	log.Printf("INFO: Load hydrant WS")
+	csvOut, err := a.authorizedDownload(csvurl)
+	if err != nil {
+		return out, err
+	}
+
+	log.Printf("INFO: CSV temporary file: %s", csvOut)
+	defer os.Remove(csvOut)
+
+	classesFp, err := os.Open(csvOut)
+	if err != nil {
+		return out, err
+	}
+
+	reader := csv.NewReader(classesFp)
+
+	return reader.ReadAll()
+}
+
+func (a *Agent) ExportCalendar() ([]byte, error) {
+	v := url.Values{}
+	v.Set("exportType", "ics")
+	v.Set("StartDate", "01/01/2005")
+	v.Set("EndDate", "01/01/2025")
+	v.Set("EntryTypes", "")
+
+	u := "https://secure.emergencyreporting.com/calendar/includes/backends/calendar_export.php?" + v.Encode()
+
+	a.ContextSwitch = ContextDownload
+
+	log.Printf("INFO: Load calendar WS")
+	oFile, err := a.authorizedDownload(u)
+
+	if err != nil {
+		log.Printf("ERR: %s: %s", err.Error(), oFile)
+		return []byte{}, err
+	}
+
+	log.Printf("INFO: temporary file: %s", oFile)
+	defer os.Remove(oFile)
+
+	return os.ReadFile(oFile)
 }
