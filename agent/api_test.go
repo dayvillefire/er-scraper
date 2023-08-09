@@ -109,6 +109,20 @@ func Test_GetHydrants(t *testing.T) {
 	t.Logf("INFO: Found %d hydrant records", len(data))
 }
 
+func Test_GetIncidents(t *testing.T) {
+	a, err := testGetAgent(t)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	data, err := a.GetIncidents()
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	t.Logf("INFO: Found %d incident records", len(data))
+}
+
 func Test_ExportCalendar(t *testing.T) {
 	a, err := testGetAgent(t)
 	if err != nil {

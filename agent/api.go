@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/chromedp/chromedp"
 	"github.com/jbuchbinder/shims"
 )
 
@@ -240,30 +242,49 @@ func (a *Agent) GetUserCertifications(userId int) (map[string]any, error) {
 
 // GetHydrants returns an array of all hydrant data
 func (a *Agent) GetHydrants() ([][]string, error) {
-	out := [][]string{}
-
-	a.ContextSwitch = ContextDownload
-
-	csvurl := "https://secure.emergencyreporting.com/webservices/hydrants/hydrants.php?_type=hydrants&_function=list_csv"
-
-	log.Printf("INFO: Load hydrant WS")
-	csvOut, err := a.authorizedDownload(csvurl)
-	if err != nil {
-		return out, err
-	}
-
-	log.Printf("INFO: CSV temporary file: %s", csvOut)
-	defer os.Remove(csvOut)
-
-	classesFp, err := os.Open(csvOut)
-	if err != nil {
-		return out, err
-	}
-
-	reader := csv.NewReader(classesFp)
-
-	return reader.ReadAll()
+	return a.getCsvUrl("https://secure.emergencyreporting.com/webservices/hydrants/hydrants.php?_type=hydrants&_function=list_csv")
 }
+
+// GetIncidents returns an array of all incident data
+func (a *Agent) GetIncidents() ([][]string, error) {
+	var out string
+
+	err := chromedp.Run(a.ctx,
+		chromedp.Navigate("https://secure.emergencyreporting.com/nfirs/searchoptions.asp?undefined=undefined"),
+		//https://secure.emergencyreporting.com/nfirs/main.asp?csrt=1772698412475071612"),
+	)
+	if err != nil {
+		log.Printf("ERR: Could not load main NFIRS screen")
+		return [][]string{}, err
+	}
+
+	err = chromedp.Run(a.ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Setting multioption")
+			return nil
+		}),
+		chromedp.SetAttributes("//input[@id='Radio1']", map[string]string{"checked": "checked"}),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Setting searchDateRange")
+			return nil
+		}),
+		chromedp.SetValue("//select[@name='searchDateRange']", "AllTime"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Submitting form")
+			return nil
+		}),
+		chromedp.Click("//input[@id='Submit2']"),
+		chromedp.Text(`//*`, &out),
+	)
+	log.Printf("INFO: %s", out)
+	return a.getCsvUrl("https://secure.emergencyreporting.com/nfirs/main_results.asp?downloadCSV=1")
+}
+
+// exposureform
+// POST https://secure.emergencyreporting.com/nfirs/includes/top_main.asp?csrt=1772698412475071612
+// hidden iid
+// hidden eredirectto
+// hidden eid
 
 func (a *Agent) ExportCalendar() ([]byte, error) {
 	v := url.Values{}

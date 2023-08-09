@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	"github.com/jbuchbinder/shims"
 )
@@ -204,10 +206,21 @@ func (a *Agent) Init() error {
 				return nil
 			}),
 
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				log.Printf("INFO: Loading base URL")
+				return nil
+			}),
+
 			chromedp.Navigate(a.LoginUrl),
 
 			// Don't continue until the dashboard is visible
 			//chromedp.WaitVisible(`//*[contains(., 'Incidents')]`),
+
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				log.Printf("INFO: Waiting until DIV.page-header-title is visible")
+				return nil
+			}),
+
 			chromedp.WaitVisible("DIV.page-header-title"),
 
 			/*
@@ -473,9 +486,13 @@ async function postData(url = '', data = {}) {
 	return []byte(response), nil
 }
 
+func (a *Agent) authorizedDownload(url string) (string, error) {
+	return a.authorizedDownloadContext(a.ctx, url)
+}
+
 // authorizedDownload uses the current authentication mechanism to download a file.
 // Returns the temporary file name.
-func (a *Agent) authorizedDownload(url string) (string, error) {
+func (a *Agent) authorizedDownloadContext(ctx context.Context, url string) (string, error) {
 	var out string
 
 	log.Printf("authorizedDownload(%s)", url)
@@ -485,7 +502,7 @@ func (a *Agent) authorizedDownload(url string) (string, error) {
 
 	wd := shims.SingleValueDiscardError(os.Getwd())
 
-	if err := chromedp.Run(a.ctx,
+	if err := chromedp.Run(ctx,
 		browser.
 			SetDownloadBehavior(browser.SetDownloadBehaviorBehaviorAllowAndName).
 			WithDownloadPath(wd).
@@ -527,6 +544,34 @@ func (a *Agent) waitForLoadEvent(ctx context.Context) chromedp.Action {
 	})
 }
 
+func (a *Agent) getCsvUrl(csvurl string) ([][]string, error) {
+	return a.getCsvUrlContext(a.ctx, csvurl)
+}
+
+func (a *Agent) getCsvUrlContext(ctx context.Context, csvurl string) ([][]string, error) {
+	out := [][]string{}
+
+	a.ContextSwitch = ContextDownload
+
+	log.Printf("INFO: Load CSV from %s", csvurl)
+	csvOut, err := a.authorizedDownload(csvurl)
+	if err != nil {
+		return out, err
+	}
+
+	log.Printf("INFO: CSV temporary file: %s", csvOut)
+	defer os.Remove(csvOut)
+
+	fp, err := os.Open(csvOut)
+	if err != nil {
+		return out, err
+	}
+
+	reader := csv.NewReader(fp)
+
+	return reader.ReadAll()
+}
+
 type Timestamp struct {
 	time.Time
 }
@@ -535,4 +580,20 @@ func TimestampFromFloat64(ts float64) Timestamp {
 	secs := int64(ts)
 	nsecs := int64((ts - float64(secs)) * 1e9)
 	return Timestamp{time.Unix(secs, nsecs)}
+}
+
+func getIframeContext(ctx context.Context, uriPart string) context.Context {
+	targets, _ := chromedp.Targets(ctx)
+	var tgt *target.Info
+	for _, t := range targets {
+		fmt.Println(t.Title, "|", t.Type, "|", t.URL, "|", t.TargetID)
+		if t.Type == "iframe" && strings.Contains(t.URL, uriPart) {
+			tgt = t
+		}
+	}
+	if tgt != nil {
+		ictx, _ := chromedp.NewContext(ctx, chromedp.WithTargetID(tgt.TargetID))
+		return ictx
+	}
+	return nil
 }
