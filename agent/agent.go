@@ -77,6 +77,7 @@ func (a *Agent) Init() error {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserDataDir(""),
 		chromedp.Flag("enable-privacy-sandbox-ads-apis", true),
+		chromedp.Flag("disable-web-security", true), // fix iframe issue?
 	)
 
 	lf := log.Printf
@@ -586,8 +587,9 @@ func getIframeContext(ctx context.Context, uriPart string) context.Context {
 	targets, _ := chromedp.Targets(ctx)
 	var tgt *target.Info
 	for _, t := range targets {
-		fmt.Println(t.Title, "|", t.Type, "|", t.URL, "|", t.TargetID)
-		if t.Type == "iframe" && strings.Contains(t.URL, uriPart) {
+		log.Printf("INFO: Frame %s | %s | %s | %#v", t.Title, t.Type, t.URL, t.TargetID)
+		if (t.Type == "iframe" || t.Type == "frame") && strings.Contains(t.URL, uriPart) {
+			log.Printf("INFO: Found target %#v", t)
 			tgt = t
 		}
 	}
