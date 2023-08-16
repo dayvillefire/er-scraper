@@ -245,38 +245,113 @@ func (a *Agent) GetHydrants() ([][]string, error) {
 	return a.getCsvUrl("https://secure.emergencyreporting.com/webservices/hydrants/hydrants.php?_type=hydrants&_function=list_csv")
 }
 
-// GetIncidents returns an array of all incident data
-func (a *Agent) GetIncidents() ([][]string, error) {
-	var out string
-
-	err := chromedp.Run(a.ctx,
-		chromedp.Navigate("https://secure.emergencyreporting.com/nfirs/searchoptions.asp?undefined=undefined"),
-		//https://secure.emergencyreporting.com/nfirs/main.asp?csrt=1772698412475071612"),
-	)
-	if err != nil {
-		log.Printf("ERR: Could not load main NFIRS screen")
-		return [][]string{}, err
-	}
-
-	err = chromedp.Run(a.ctx,
+// GetIncidentIDs returns an array of all incident data
+func (a *Agent) GetIncidentIDs() ([]string, error) {
+	var target any // temporary holding spot -- we just discard this
+	if err := chromedp.Run(a.ctx,
+		chromedp.Navigate("https://secure.emergencyreporting.com/nfirs/main.asp"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Waiting for header frame to be visible")
+			return nil
+		}),
+		chromedp.WaitVisible("//frameset/frame[@src='searchoptions.asp']"),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			log.Printf("INFO: Setting multioption")
 			return nil
 		}),
-		chromedp.SetAttributes("//input[@id='Radio1']", map[string]string{"checked": "checked"}),
+		chromedp.Evaluate(`top.frames[1].document.querySelector('input[id="Radio1"]').checked = true;`, &target),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			log.Printf("INFO: Setting searchDateRange")
+			log.Printf("INFO: Setting search range")
 			return nil
 		}),
-		chromedp.SetValue("//select[@name='searchDateRange']", "AllTime"),
+		chromedp.Evaluate(`top.frames[1].document.querySelector('select[name="searchDateRange"]').value = 'AllTime';`, &target),
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			log.Printf("INFO: Submitting form")
 			return nil
 		}),
-		chromedp.Click("//input[@id='Submit2']"),
-		chromedp.Text(`//*`, &out),
-	)
-	log.Printf("INFO: %s", out)
+		chromedp.Evaluate(`top.frames[1].document.querySelector('input[id="Submit2"]').click();`, &target),
+	); err != nil {
+		return []string{}, err
+	}
+
+	allids := make([]string, 0)
+
+	next := true
+	page := 1
+	// Enter loop
+	for {
+		var disabled bool
+		if err := chromedp.Run(a.ctx,
+			chromedp.Evaluate(`top.frames[2].document.querySelector('button#button3').disabled;`, &disabled),
+		); err != nil {
+			log.Printf("ERR: %s", err.Error())
+			break
+		}
+		// Don't process beyond this page if the next button is disabled
+		next = !disabled
+
+		// Get the list of IDs
+		var ids []string
+		if err := chromedp.Run(a.ctx,
+			chromedp.Evaluate(`Array.prototype.slice.call(top.frames[2].document.querySelectorAll('td.listout:nth-child(1)')).map(val => val.getAttribute("onclick").split("'")[1]);`, &ids),
+		); err != nil {
+			log.Printf("ERR: %s", err.Error())
+			break
+		}
+		allids = append(allids, ids...)
+		log.Printf("INFO: Found %d ids on page %d, total %d", len(ids), page, len(allids))
+
+		page++
+
+		if !next {
+			log.Printf("INFO: No next page, breaking out of loop")
+			break
+		}
+
+		var target any
+		if err := chromedp.Run(a.ctx,
+			chromedp.Evaluate(fmt.Sprintf("window.frames[2].location='?pagenumber=%d';", page), &target), // .getElementById('button3').click();`, &target),
+		); err != nil {
+			log.Printf("ERR: Submitting next page: %s", err.Error())
+			break
+		}
+		//log.Printf("DEBUG: Target = %#v", target)
+		//break
+
+	}
+
+	return allids, nil
+}
+
+// GetIncidentsCsv returns an array of all incident data
+func (a *Agent) GetIncidentsCSV() ([][]string, error) {
+	var target any // temporary holding spot -- we just discard this
+	if err := chromedp.Run(a.ctx,
+		chromedp.Navigate("https://secure.emergencyreporting.com/nfirs/main.asp"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Waiting for header frame to be visible")
+			return nil
+		}),
+		chromedp.WaitVisible("//frameset/frame[@src='searchoptions.asp']"),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Setting multioption")
+			return nil
+		}),
+		chromedp.Evaluate(`top.frames[1].document.querySelector('input[id="Radio1"]').checked = true;`, &target),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Setting search range")
+			return nil
+		}),
+		chromedp.Evaluate(`top.frames[1].document.querySelector('select[name="searchDateRange"]').value = 'AllTime';`, &target),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			log.Printf("INFO: Submitting form")
+			return nil
+		}),
+		chromedp.Evaluate(`top.frames[1].document.querySelector('input[id="Submit2"]').click();`, &target),
+	); err != nil {
+		return [][]string{}, err
+	}
+
 	return a.getCsvUrl("https://secure.emergencyreporting.com/nfirs/main_results.asp?downloadCSV=1")
 }
 

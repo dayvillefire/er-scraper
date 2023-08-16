@@ -109,13 +109,13 @@ func Test_GetHydrants(t *testing.T) {
 	t.Logf("INFO: Found %d hydrant records", len(data))
 }
 
-func Test_GetIncidents(t *testing.T) {
+func Test_GetIncidentIDs(t *testing.T) {
 	a, err := testGetAgent(t)
 	if err != nil {
 		t.Fatalf("ERR: %s", err.Error())
 	}
 
-	data, err := a.GetIncidents()
+	data, err := a.GetIncidentIDs()
 	if err != nil {
 		t.Fatalf("ERR: %s", err.Error())
 	}
