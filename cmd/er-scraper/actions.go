@@ -53,7 +53,12 @@ func exportTraining() {
 	}
 
 	for _, id := range ids {
+		if id == 0 {
+			continue
+		}
+
 		log.Printf("INFO: Attempting to download assets for class %d", id)
+		os.MkdirAll(fmt.Sprintf("%s/training/%d", shims.SingleValueDiscardError(os.Getwd()), id), 0755)
 
 		log.Printf("INFO: Getting narrative for class %d", id)
 		err = a.DownloadTrainingNarrative(id, fmt.Sprintf("%s/training/%d/narrative.json", shims.SingleValueDiscardError(os.Getwd()), id))
@@ -74,5 +79,8 @@ func exportTraining() {
 		if err != nil {
 			log.Printf("ERR: %s", err.Error())
 		}
+
+		//log.Printf("DEBUG: Wait 5 seconds")
+		//time.Sleep(5 * time.Second)
 	}
 }

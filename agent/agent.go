@@ -46,7 +46,7 @@ type Agent struct {
 	urlMap  map[string]string
 	bodyMap map[string][]byte
 	attr    map[string]string
-	cookies []network.Cookie
+	cookies []*network.Cookie
 	ctx     context.Context
 	cancel  context.CancelFunc
 	cfunc   []context.CancelFunc
@@ -224,6 +224,20 @@ func (a *Agent) Init() error {
 
 			chromedp.WaitVisible("DIV.page-header-title"),
 
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				var err error
+				a.cookies, err = network.GetCookies().Do(ctx)
+				if err != nil {
+					return err
+				}
+				for i, cookie := range a.cookies {
+					if a.Debug {
+						log.Printf("DEBUG: chrome cookie %d: %+v", i, cookie.Name)
+					}
+				}
+				return nil
+			}),
+
 			/*
 				chromedp.ActionFunc(func(ctx context.Context) error {
 					cookies, err := network.GetCookies().Do(ctx)
@@ -391,6 +405,46 @@ func (a *Agent) authorizedGet(url string) ([]byte, error) {
 	return []byte(out), nil
 }
 
+// authorizedNativeGet uses the current authentication mechanism to GET a specific URL
+func (a *Agent) authorizedNativeGet(url string) ([]byte, error) {
+	var out []byte
+
+	log.Printf("authorizedNativeGet(%s)", url)
+
+	cl := http.Client{}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("ERR: Parse: %s", err.Error())
+		return []byte{}, err
+	}
+
+	// Load all cookies
+	for _, i := range a.cookies {
+		o := &http.Cookie{
+			Name:    i.Name,
+			Domain:  i.Domain,
+			Value:   i.Value,
+			Path:    i.Path,
+			Expires: time.Now().Local().Add(time.Hour),
+		}
+		if a.Debug {
+			log.Printf("DEBUG: cookie : %#v", *o)
+		}
+		req.AddCookie(o)
+	}
+
+	resp, err := cl.Do(req)
+	if err != nil {
+		log.Printf("ERR: Get: %s", err.Error())
+		return []byte{}, err
+	}
+
+	out, err = io.ReadAll(resp.Body)
+
+	return out, err
+}
+
 func (a *Agent) authorizedJsonGet(url string) ([]byte, error) {
 	b, err := a.authorizedGet(url)
 	if err != nil {
@@ -423,6 +477,23 @@ func (a *Agent) authorizedJsonGet2(url string) ([]byte, error) {
 
 	if err := chromedp.Run(a.ctx, chromedp.Navigate(url),
 		chromedp.Tasks{
+
+			// Refresh cookies, keep 'em fresh so we don't die out during
+			// enormous batches.
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				var err error
+				a.cookies, err = network.GetCookies().Do(ctx)
+				if err != nil {
+					return err
+				}
+				for i, cookie := range a.cookies {
+					if a.Debug {
+						log.Printf("DEBUG: chrome cookie %d: %+v", i, cookie.Name)
+					}
+				}
+				return nil
+			}),
+
 			chromedp.Text(`//*`, &out),
 		}); err != nil {
 		return nil, fmt.Errorf("could not get url %s: %s", url, err.Error())
@@ -445,6 +516,7 @@ func (a *Agent) authorizedApiGetCall(hostPage, apiUrl string) ([]byte, error) {
 	); err != nil {
 		return []byte{}, err
 	}
+	log.Printf("authorizedApiGetCall(): INFO: Got token %s", accessToken)
 
 	// Basic fetch
 	req, err := http.NewRequest("GET", apiUrl, nil)
@@ -519,7 +591,7 @@ func (a *Agent) authorizedDownloadContext(ctx context.Context, url string) (stri
 	// We can predict the exact file location and name here because of how we
 	// configured SetDownloadBehavior and WithDownloadPath
 	out = filepath.Join(wd, guid)
-	log.Printf("wrote %s", out)
+	log.Printf("authorizedDownload: INFO: wrote %s", out)
 
 	return out, nil
 }

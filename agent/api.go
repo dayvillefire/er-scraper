@@ -81,7 +81,11 @@ func (a *Agent) DownloadTrainingNarrative(classId int, destFile string) error {
 		return err
 	}
 
-	return os.WriteFile(destFile, narrative, 0644)
+	err = os.WriteFile(destFile, narrative, 0644)
+	if err != nil {
+		log.Printf("DownloadTrainingNarrative(): ERR: destfile = %s: %s", destFile, err.Error())
+	}
+	return err
 }
 
 // DownloadTrainingAssets downloads training files, with appropriate names,
@@ -177,8 +181,24 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 	log.Printf("INFO: fileguidmap = %#v", fileGuidMap)
 
 	for fn, guid := range fileGuidMap {
-		var out string
-		out, err = a.authorizedDownload(fmt.Sprintf(
+		/*
+			var out string
+			out, err = a.authorizedDownload(fmt.Sprintf(
+				"https://secure.emergencyreporting.com/filedownload.php?fileguid=%s&contentdisposition=attachment",
+				guid,
+			))
+			if err != nil {
+				log.Printf("ERR: %s", err.Error())
+				continue
+			}
+			log.Printf("INFO: title = %s, temp file = %s", fn, out)
+			err = os.Rename(out, destPath+string(os.PathSeparator)+fn)
+			if err != nil {
+				log.Printf("ERR: renaming file %s to %s: %s", out, destPath+string(os.PathSeparator)+fn, err.Error())
+			}
+		*/
+
+		out, err := a.authorizedNativeGet(fmt.Sprintf(
 			"https://secure.emergencyreporting.com/filedownload.php?fileguid=%s&contentdisposition=attachment",
 			guid,
 		))
@@ -186,11 +206,14 @@ func (a *Agent) DownloadTrainingAssets(classId int, destPath string) error {
 			log.Printf("ERR: %s", err.Error())
 			continue
 		}
-		log.Printf("INFO: title = %s, temp file = %s", fn, out)
-		err = os.Rename(out, destPath+string(os.PathSeparator)+fn)
+		err = os.WriteFile(destPath+string(os.PathSeparator)+fn, out, 0644)
 		if err != nil {
-			log.Printf("ERR: renaming file %s to %s: %s", out, destPath+string(os.PathSeparator)+fn, err.Error())
+			log.Printf("ERR: %s", err.Error())
+			continue
 		}
+
+		//log.Printf("DEBUG: Wait 2 seconds")
+		//time.Sleep(2 * time.Second)
 	}
 
 	return err
