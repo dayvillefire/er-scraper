@@ -3,7 +3,7 @@ module github.com/dayvillefire/er-scraper/agent
 go 1.20
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20231019002500-864b42864d36
+	github.com/chromedp/cdproto v0.0.0-20231025043423-5615e204d422
 	github.com/chromedp/chromedp v0.9.3
 	github.com/jbuchbinder/shims v0.0.0-20230728185230-53ce6a775b20
 	github.com/joho/godotenv v1.5.1
