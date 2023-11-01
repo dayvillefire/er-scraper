@@ -24,6 +24,7 @@ func main() {
 
 	if len(flag.Args()) < 1 {
 		log.Printf("syntax: er-scraper [--flags] ACTION")
+		log.Printf("actions: events, training")
 		return
 	}
 
@@ -31,10 +32,12 @@ func main() {
 	pass = os.Getenv("PASSWORD")
 
 	switch flag.Arg(0) {
+	case "events":
+		exportEvents()
 	case "training":
 		exportTraining()
 	default:
-		log.Printf("Valid actions: training")
+		log.Printf("Valid actions: events, training")
 		return
 	}
 }

@@ -6,15 +6,35 @@ import (
 	"log"
 	"os"
 
+	"github.com/dayvillefire/er-scraper/agent"
 	"github.com/jbuchbinder/shims"
 )
 
-func exportTraining() {
+func exportCommon() *agent.Agent {
 	a := getAgent()
 	err := a.Init()
 	if err != nil {
 		panic(err)
 	}
+	return a
+}
+
+func exportEvents() {
+	a := exportCommon()
+
+	cal, err := a.ExportCalendar()
+	if err != nil {
+		panic(err)
+	}
+	err = os.WriteFile("calendar.vcs", cal, 0644)
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("INFO: Exported calendar.vcs")
+}
+
+func exportTraining() {
+	a := exportCommon()
 
 	log.Printf("INFO: Fetching all training class IDs")
 	ids, full, err := a.GetAllTrainingClassIDs()
