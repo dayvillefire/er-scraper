@@ -224,19 +224,7 @@ func (a *Agent) Init() error {
 
 			chromedp.WaitVisible("DIV.page-header-title"),
 
-			chromedp.ActionFunc(func(ctx context.Context) error {
-				var err error
-				a.cookies, err = network.GetCookies().Do(ctx)
-				if err != nil {
-					return err
-				}
-				for i, cookie := range a.cookies {
-					if a.Debug {
-						log.Printf("DEBUG: chrome cookie %d: %+v", i, cookie.Name)
-					}
-				}
-				return nil
-			}),
+			chromedp.ActionFunc(a.saveCookies),
 
 			/*
 				chromedp.ActionFunc(func(ctx context.Context) error {
@@ -399,6 +387,7 @@ func (a *Agent) authorizedGet(url string) ([]byte, error) {
 	if err := chromedp.Run(a.ctx, chromedp.Navigate(url),
 		chromedp.Tasks{
 			chromedp.InnerHTML("//*", &out),
+			chromedp.ActionFunc(a.saveCookies),
 		}); err != nil {
 		return nil, fmt.Errorf("could not get url %s: %s", url, err.Error())
 	}
@@ -477,23 +466,10 @@ func (a *Agent) authorizedJsonGet2(url string) ([]byte, error) {
 
 	if err := chromedp.Run(a.ctx, chromedp.Navigate(url),
 		chromedp.Tasks{
-
 			// Refresh cookies, keep 'em fresh so we don't die out during
 			// enormous batches.
-			chromedp.ActionFunc(func(ctx context.Context) error {
-				var err error
-				a.cookies, err = network.GetCookies().Do(ctx)
-				if err != nil {
-					return err
-				}
-				for i, cookie := range a.cookies {
-					if a.Debug {
-						log.Printf("DEBUG: chrome cookie %d: %+v", i, cookie.Name)
-					}
-				}
-				return nil
-			}),
-
+			chromedp.ActionFunc(a.saveCookies),
+			// Extract actual text
 			chromedp.Text(`//*`, &out),
 		}); err != nil {
 		return nil, fmt.Errorf("could not get url %s: %s", url, err.Error())
@@ -643,6 +619,20 @@ func (a *Agent) getCsvUrlContext(ctx context.Context, csvurl string) ([][]string
 	reader := csv.NewReader(fp)
 
 	return reader.ReadAll()
+}
+
+func (a *Agent) saveCookies(ctx context.Context) error {
+	var err error
+	a.cookies, err = network.GetCookies().Do(ctx)
+	if err != nil {
+		return err
+	}
+	for i, cookie := range a.cookies {
+		if a.Debug {
+			log.Printf("DEBUG: chrome cookie %d: %+v", i, cookie.Name)
+		}
+	}
+	return nil
 }
 
 type Timestamp struct {

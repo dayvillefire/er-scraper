@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -10,7 +11,9 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/chromedp/chromedp"
 	"github.com/jbuchbinder/shims"
 )
@@ -299,30 +302,61 @@ func (a *Agent) GetIncidentIDs() ([]string, error) {
 
 	allids := make([]string, 0)
 
+	/*
+		{
+			allcsv, err := a.authorizedNativeGet("https://secure.emergencyreporting.com/nfirs/main_results.asp?downloadCSV=1")
+			if err != nil {
+				return []string{}, err
+			}
+			r := csv.NewReader(bytes.NewBuffer(allcsv))
+			rec, err := r.ReadAll()
+			if err != nil {
+				return []string{}, err
+			}
+			log.Printf("%#v, len = %d", rec, len(rec))
+			allids = rec[0]
+		}
+	*/
+
 	next := true
 	page := 1
 	// Enter loop
 	for {
-		var disabled bool
-		if err := chromedp.Run(a.ctx,
-			chromedp.Evaluate(`top.frames[2].document.querySelector('button#button3').disabled;`, &disabled),
-		); err != nil {
+		pRaw, err := a.authorizedNativeGet(fmt.Sprintf("https://secure.emergencyreporting.com/nfirs/main_results.asp?pagenumber=%d", page))
+		if err != nil {
 			log.Printf("ERR: %s", err.Error())
 			break
 		}
-		// Don't process beyond this page if the next button is disabled
-		next = !disabled
 
-		// Get the list of IDs
-		var ids []string
-		if err := chromedp.Run(a.ctx,
-			chromedp.Evaluate(`Array.prototype.slice.call(top.frames[2].document.querySelectorAll('td.listout:nth-child(1)')).map(val => val.getAttribute("onclick").split("'")[1]);`, &ids),
-		); err != nil {
+		gq, err := goquery.NewDocumentFromReader(bytes.NewBuffer(pRaw))
+		if err != nil {
 			log.Printf("ERR: %s", err.Error())
 			break
 		}
-		allids = append(allids, ids...)
-		log.Printf("INFO: Found %d ids on page %d, total %d", len(ids), page, len(allids))
+
+		gq.Find("button#button4").Each(func(i int, s *goquery.Selection) {
+			_, exists := s.Attr("disabled")
+			if exists {
+				// Don't process beyond this page if the next button is disabled
+				log.Printf("INFO: Found disabled next button on page %d", page)
+				next = false
+			}
+		})
+
+		pageIdMap := map[string]string{}
+
+		gq.Find("td.listout").Each(func(i int, s *goquery.Selection) {
+			onclick, exists := s.Attr("onclick")
+			if !exists {
+				//log.Printf("WARN: onclick doesn't exist in : %s", shims.SingleValueDiscardError(s.Html()))
+				return
+			}
+			if strings.Index(onclick, "'") == -1 {
+				//log.Printf("WARN: onclick is empty in : %s", shims.SingleValueDiscardError(s.Html()))
+				return
+			}
+			pageIdMap[strings.Split(onclick, "'")[1]] = strings.Split(onclick, "'")[1]
+		})
 
 		page++
 
@@ -331,16 +365,9 @@ func (a *Agent) GetIncidentIDs() ([]string, error) {
 			break
 		}
 
-		var target any
-		if err := chromedp.Run(a.ctx,
-			chromedp.Evaluate(fmt.Sprintf("window.frames[2].location='?pagenumber=%d';", page), &target), // .getElementById('button3').click();`, &target),
-		); err != nil {
-			log.Printf("ERR: Submitting next page: %s", err.Error())
-			break
-		}
-		//log.Printf("DEBUG: Target = %#v", target)
-		//break
+		allids = append(allids, shims.Values(pageIdMap)...)
 
+		log.Printf("INFO: Collected %d ids", len(allids))
 	}
 
 	return allids, nil
