@@ -123,6 +123,18 @@ func Test_GetIncidentIDs(t *testing.T) {
 	t.Logf("INFO: Found %d incident records", len(data))
 }
 
+func Test_DownloadIncident(t *testing.T) {
+	a, err := testGetAgent(t)
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+
+	err = a.DownloadIncident("incident", "76400195")
+	if err != nil {
+		t.Fatalf("ERR: %s", err.Error())
+	}
+}
+
 func Test_ExportCalendar(t *testing.T) {
 	a, err := testGetAgent(t)
 	if err != nil {

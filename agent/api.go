@@ -302,22 +302,6 @@ func (a *Agent) GetIncidentIDs() ([]string, error) {
 
 	allids := make([]string, 0)
 
-	/*
-		{
-			allcsv, err := a.authorizedNativeGet("https://secure.emergencyreporting.com/nfirs/main_results.asp?downloadCSV=1")
-			if err != nil {
-				return []string{}, err
-			}
-			r := csv.NewReader(bytes.NewBuffer(allcsv))
-			rec, err := r.ReadAll()
-			if err != nil {
-				return []string{}, err
-			}
-			log.Printf("%#v, len = %d", rec, len(rec))
-			allids = rec[0]
-		}
-	*/
-
 	next := true
 	page := 1
 	// Enter loop
@@ -403,6 +387,74 @@ func (a *Agent) GetIncidentsCSV() ([][]string, error) {
 	}
 
 	return a.getCsvUrl("https://secure.emergencyreporting.com/nfirs/main_results.asp?downloadCSV=1")
+}
+
+func (a *Agent) DownloadIncident(path string, eid string) error {
+	// Determine if we're pulling a PDF file for patient information or not.
+	// If not, just pull the HTML and grab images as well
+
+	/*
+		// TODO: This needs detection logic for patients
+		{
+			pdialog, err := a.authorizedNativeGet(fmt.Sprintf("https://secure.emergencyreporting.com/nfirs/print_form.asp?eid=%s&pid=&cid=&fromSummary=TRUE", eid))
+			if err != nil {
+				return err
+			}
+
+			gq, err := goquery.NewDocumentFromReader(bytes.NewBuffer(pdialog))
+			if err != nil {
+				return err
+			}
+
+		}
+	*/
+
+	os.MkdirAll(path, 0755) // silently ignore errors if already exists
+
+	{
+		phtml, err := a.authorizedNativeGet(fmt.Sprintf("https://secure.emergencyreporting.com/nfirs/print.asp?printtype=2&printtype=3&printtype=4&printtype=5&printtyperadio=5a&eid=%s&printtype=&printOption=&fromsummary=TRUE&cid=&patientcount=&notpayroll=TRUE", eid))
+		if err != nil {
+			return err
+		}
+
+		err = os.WriteFile(path+string(os.PathSeparator)+"incident.html", phtml, 0644)
+		if err != nil {
+			log.Printf("ERR: Was not able to write incident data: %s", err.Error())
+			return nil
+		}
+
+		gq, err := goquery.NewDocumentFromReader(bytes.NewBuffer(phtml))
+		if err != nil {
+			return err
+		}
+
+		aCount := 0
+		gq.Find("a").Each(func(_ int, s *goquery.Selection) {
+			href, exists := s.Attr("href")
+			if !exists {
+				return
+			}
+			data, err := a.authorizedNativeGet("https://secure.emergencyreporting.com" + href)
+			if err != nil {
+				log.Printf("ERR: Was not able to fetch attachment %s: %s", href, err.Error())
+				return
+			}
+
+			// TODO: IMPLEMENT: XXX: Extract the GUID and name the file that
+			// TODO: IMPLEMENT: XXX: Type detection for files?
+
+			err = os.WriteFile(path+string(os.PathSeparator)+fmt.Sprintf("attachment-%03d", aCount), data, 0644)
+			if err != nil {
+				log.Printf("ERR: Was not able to write attachment %s: %s", href, err.Error())
+				return
+			}
+			aCount++
+		})
+	}
+
+	// https://secure.emergencyreporting.com/nfirs/print.asp?printtype=2&printtype=3&printtype=4&printtype=5&printtyperadio=5a&eid=EID&printtype=&printOption=&fromsummary=TRUE&cid=&patientcount=&notpayroll=TRUE
+
+	return nil
 }
 
 // exposureform
