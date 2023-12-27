@@ -75,7 +75,7 @@ func (a *Agent) Init() error {
 	a.done = make(chan string, 1)
 
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.UserDataDir(""),
+		chromedp.UserDataDir(os.TempDir()),
 		chromedp.Flag("enable-privacy-sandbox-ads-apis", true),
 		chromedp.Flag("disable-web-security", true), // fix iframe issue?
 	)
