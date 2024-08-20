@@ -74,8 +74,13 @@ func (a *Agent) Init() error {
 	a.cfunc = make([]context.CancelFunc, 0)
 	a.done = make(chan string, 1)
 
+	tmpdir, err := os.MkdirTemp("", "agent")
+	if err != nil {
+		return err
+	}
+
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.UserDataDir(os.TempDir()),
+		chromedp.UserDataDir(tmpdir),
 		chromedp.Flag("enable-privacy-sandbox-ads-apis", true),
 		chromedp.Flag("disable-web-security", true), // fix iframe issue?
 	)
