@@ -42,6 +42,27 @@ func exportTraining() {
 		panic(err)
 	}
 
+	exportTrainingFromData(a, ids, full)
+}
+
+func exportTrainingFromCSV(csvfile string) {
+	a := exportCommon()
+
+	csvdata, err := os.ReadFile(csvfile)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Printf("INFO: Fetching all training class IDs")
+	ids, full, err := a.GetAllTrainingClassIDsFromCSV(csvdata)
+	if err != nil {
+		panic(err)
+	}
+
+	exportTrainingFromData(a, ids, full)
+}
+
+func exportTrainingFromData(a *agent.Agent, ids []int, full [][]string) {
 	cols := []string{
 		"Class ID", "Name", "Class Date",
 		"Length", "Category Name", "Station",

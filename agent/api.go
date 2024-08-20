@@ -32,20 +32,20 @@ func (a *Agent) GetAllTrainingClassIDs() ([]int, [][]string, error) {
 	csvurl := "https://secure.emergencyreporting.com/training/ws/classes.php?_function=list_csv&_csvtype=info"
 
 	log.Printf("INFO: Load class list WS")
-	classesOut, err := a.authorizedDownload(csvurl)
+	classesOut, err := a.authorizedApiGetCall("https://secure.emergencyreporting.com/", csvurl)
+	//classesOut, err := a.authorizedJsonGet2(csvurl)
 	if err != nil {
 		return out, fullout, err
 	}
 
-	log.Printf("INFO: CSV temporary file: %s", classesOut)
-	defer os.Remove(classesOut)
+	return a.GetAllTrainingClassIDsFromCSV(classesOut)
+}
 
-	classesFp, err := os.Open(classesOut)
-	if err != nil {
-		return out, fullout, err
-	}
+func (a *Agent) GetAllTrainingClassIDsFromCSV(csvdata []byte) ([]int, [][]string, error) {
+	out := make([]int, 0)
+	fullout := [][]string{}
 
-	reader := csv.NewReader(classesFp)
+	reader := csv.NewReader(bytes.NewReader(csvdata))
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {

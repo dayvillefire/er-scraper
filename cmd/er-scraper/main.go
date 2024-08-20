@@ -36,6 +36,8 @@ func main() {
 		exportEvents()
 	case "training":
 		exportTraining()
+	case "trainingcsv":
+		exportTrainingFromCSV(flag.Arg(1))
 	default:
 		log.Printf("Valid actions: events, training")
 		return
